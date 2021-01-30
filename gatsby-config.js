@@ -1,6 +1,6 @@
 module.exports = {
   siteMetadata: {
-    title: 'Running page',
+    title: '黑影儿的跑步历史',
     siteUrl: 'https://statistics.libo.run',
     description: '黑影儿的跑步历史',
   },

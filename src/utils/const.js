@@ -47,8 +47,10 @@ export {
 export const AVATAR =
   'https://wxhost-images.s3.cn-north-1.amazonaws.com.cn/albertavatar.png'; // Temp avatar
 export const NAVS = [
-  { text: 'Blog', link: 'https://libo.run' },
+  { text: 'YouTube', link: 'https://www.youtube.com/channel/UCBvcXPwXIRhKuTxe-6sVT8A' },
+  { text: 'Bilibili', link: 'https://space.bilibili.com/38995440' },
   { text: 'Twitter', link: 'https://twitter.com/leeeboo' },
+  { text: 'Weibo', link: 'https://weibo.com/7199832307/profile' },
 ];
 
 const nike = 'rgb(224,237,94)';
