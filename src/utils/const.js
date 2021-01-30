@@ -1,6 +1,6 @@
 // const
 const MAPBOX_TOKEN =
-  'pk.eyJ1IjoieWlob25nMDYxOCIsImEiOiJja2J3M28xbG4wYzl0MzJxZm0ya2Fua2p2In0.PNKfkeQwYuyGOTT_x9BJ4Q';
+  'pk.eyJ1IjoibGVlZWJvbyIsImEiOiJja2d1ZDY0a2wwOWR6MzBwajI4Z2lwcGF0In0.YvHjWoD3u4lAQk1lRTTFlA;
 const MUNICIPALITY_CITIES_ARR = [
   '北京市',
   '上海市',
@@ -45,10 +45,10 @@ export {
 };
 
 export const AVATAR =
-  'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQTtc69JxHNcmN1ETpMUX4dozAgAN6iPjWalQ&usqp=CAU'; // Temp avatar
+  'https://wxhost-images.s3.cn-north-1.amazonaws.com.cn/albertavatar.png'; // Temp avatar
 export const NAVS = [
-  { text: 'Blog', link: 'https://github.com/yihong0618/running_page' },
-  { text: 'About', link: 'https://github.com/yihong0618/running_page' },
+  { text: 'Blog', link: 'https://libo.run' },
+  { text: 'Twitter', link: 'https://twitter.com/leeeboo' },
 ];
 
 const nike = 'rgb(224,237,94)';

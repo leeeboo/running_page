@@ -1,8 +1,8 @@
 module.exports = {
   siteMetadata: {
     title: 'Running page',
-    siteUrl: 'https://yihong.run',
-    description: 'Personal site and blog',
+    siteUrl: 'https://statistics.libo.run',
+    description: '黑影儿的跑步历史',
   },
   plugins: [
     'gatsby-transformer-json',
