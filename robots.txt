@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+Sitemap: https://statistics.libo.run/sitemap.xml
+Host: https://statistics.libo.run
