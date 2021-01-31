@@ -1,5 +1,7 @@
 ![running_page](https://socialify.git.ci/yihong0618/running_page/image?description=1&font=Inter&forks=1&issues=1&language=1&logo=https%3A%2F%2Fraw.githubusercontent.com%2Fshaonianche%2Fgallery%2Fmaster%2Frunning_page%2Frunning_page_logo_150*150.jpg&owner=1&pulls=1&stargazers=1&theme=Light)
 
+## Daily sync
+![Run Data Sync](https://github.com/leeeboo/running_page/workflows/Run%20Data%20Sync/badge.svg?branch=master)
 
 # [Create a personal running home page](https://yihong.run/running)
 
@@ -16,6 +18,7 @@
 
 | Runner | page | App |
 | ------- | ------- | ------- |
+| [leeeboo](https://github.com/leeeboo) | https://statistics.libo.run | Strava |
 | [shaonianche](https://github.com/shaonianche) | https://run.duangfei.org | Nike |
 | [yihong0618](https://github.com/yihong0618) | https://yihong.run/running | Nike |
 | [superleeyom](https://github.com/superleeyom) | https://running.leeyom.top | Nike |
