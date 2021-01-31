@@ -133,6 +133,9 @@ jobs:
       #- run: yarn export
       - run: ls -l
       - run: ls -ls ./public
+      - run: sudo chgrp -R groupname .
+      - run: sudo chmod -R g+rwX .
+      - run: find . -type d -exec chmod g+s '{}' +
 
       - name: Deploy 🚀
         uses: JamesIves/github-pages-deploy-action@3.7.1
