@@ -51,6 +51,7 @@ export const NAVS = [
   { text: 'Bilibili', link: 'https://space.bilibili.com/38995440' },
   { text: 'Twitter', link: 'https://twitter.com/leeeboo' },
   { text: 'Weibo', link: 'https://weibo.com/7199832307/profile' },
+  { text: 'Strava', link: 'https://www.strava.com/athletes/10229945 '},
 ];
 
 const nike = 'rgb(224,237,94)';
