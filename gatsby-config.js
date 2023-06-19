@@ -1,7 +1,7 @@
 /* eslint-disable no-undef */
 // eslint-disable-next-line no-undef
 module.exports = {
-  pathPrefix: process.env.PATH_PREFIX || '/',
+  pathPrefix: '/',
   siteMetadata: {
     siteTitle: '黑影儿跑步的日子',
     siteUrl: 'https://runningpage.libo.run',
