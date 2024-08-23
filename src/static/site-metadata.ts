@@ -12,7 +12,7 @@ interface ISiteMetadataResult {
 const data: ISiteMetadataResult = {
   siteTitle: '黑影儿的跑步记录',
   siteUrl: 'https://runningpage.libo.run',
-  logo: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQTtc69JxHNcmN1ETpMUX4dozAgAN6iPjWalQ&usqp=CAU',
+  logo: 'https://gravatar.com/avatar/f3b1c5be916ba231f6c5b1c6388c6158?size=512',
   description: '跑过的路，都不会白费',
   navLinks: [
     {
