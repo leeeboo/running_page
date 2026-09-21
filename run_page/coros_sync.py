@@ -82,7 +82,11 @@ class Coros:
             response.raise_for_status()
             data = response.json()
             if not isinstance(data.get("data"), dict) or "dataList" not in data["data"]:
-                raise RuntimeError("COROS activity list failed; check account access")
+                raise RuntimeError(
+                    f"COROS activity list failed on page {page_number}; "
+                    f"result={data.get('result')!r}; data_type={type(data.get('data')).__name__}; "
+                    f"data_keys={list(data.get('data', {})) if isinstance(data.get('data'), dict) else []}"
+                )
             activities = data["data"]["dataList"]
             if not activities:
                 break
