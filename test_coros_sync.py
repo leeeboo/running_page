@@ -48,6 +48,48 @@ class CorosSyncTest(unittest.TestCase):
 
         asyncio.run(check())
 
+    def test_pagination_accepts_successful_empty_page_and_skips_history(self):
+        async def check():
+            coros = Coros("account", "password")
+            coros.req = AsyncMock()
+            request = httpx.Request("GET", "https://teamcnapi.coros.com/activity/query")
+            coros.req.get.side_effect = [
+                httpx.Response(
+                    200,
+                    request=request,
+                    json={
+                        "result": "0000",
+                        "data": {
+                            "dataList": [
+                                {
+                                    "labelId": 1,
+                                    "sportType": 100,
+                                    "startTime": 1788036393000,
+                                },
+                                {
+                                    "labelId": 2,
+                                    "sportType": 100,
+                                    "startTime": 1788295593,
+                                },
+                            ]
+                        },
+                    },
+                ),
+                httpx.Response(
+                    200,
+                    request=request,
+                    json={
+                        "result": "0000",
+                        "data": {"count": 2, "pageNumber": 2, "totalPage": 1},
+                    },
+                ),
+            ]
+            self.assertEqual(
+                await coros.fetch_activity_ids_types(False, {1788036393}), [["2", 100]]
+            )
+
+        asyncio.run(check())
+
     def test_coros_import_preserves_strava_history(self):
         with tempfile.TemporaryDirectory() as folder:
             generator = Generator(str(Path(folder) / "test.db"))

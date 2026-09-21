@@ -5,8 +5,11 @@ import os
 import time
 
 import aiofiles
+import arrow
 import httpx
 from config import FOLDER_DICT, JSON_FILE, SQL_FILE
+from generator import Generator
+from generator.db import Activity
 
 from utils import make_activities_file
 
@@ -71,7 +74,7 @@ class Coros:
     async def init(self):
         await self.login()
 
-    async def fetch_activity_ids_types(self, only_run):
+    async def fetch_activity_ids_types(self, only_run, existing_start_times=()):
         page_number = 1
         all_activities_ids_types = []
 
@@ -81,13 +84,9 @@ class Coros:
             response = await self.req.get(url)
             response.raise_for_status()
             data = response.json()
-            if not isinstance(data.get("data"), dict) or "dataList" not in data["data"]:
-                raise RuntimeError(
-                    f"COROS activity list failed on page {page_number}; "
-                    f"result={data.get('result')!r}; data_type={type(data.get('data')).__name__}; "
-                    f"data_keys={list(data.get('data', {})) if isinstance(data.get('data'), dict) else []}"
-                )
-            activities = data["data"]["dataList"]
+            if data.get("result") != "0000":
+                raise RuntimeError("COROS activity list failed; check account access")
+            activities = (data.get("data") or {}).get("dataList", [])
             if not activities:
                 break
             for activity in activities:
@@ -95,7 +94,17 @@ class Coros:
                 sport_type = activity["sportType"]
                 if label_id is None:
                     continue
-                all_activities_ids_types.append([label_id, sport_type])
+                # Avoid downloading FIT files already imported from Strava.
+                start_time = activity.get("startTime")
+                if isinstance(start_time, (int, float)):
+                    start_time = (
+                        int(start_time / 1000)
+                        if start_time > 100_000_000_000
+                        else int(start_time)
+                    )
+                    if start_time in existing_start_times:
+                        continue
+                all_activities_ids_types.append([str(label_id), sport_type])
 
             page_number += 1
 
@@ -154,7 +163,16 @@ async def download_and_generate(account, password, only_run, file_type):
     downloaded_ids = get_downloaded_ids(folder)
     coros = Coros(account, password)
     await coros.init()
-    activity_infos = await coros.fetch_activity_ids_types(only_run=only_run)
+    generator = Generator(SQL_FILE)
+    existing_start_times = {
+        arrow.get(start).int_timestamp
+        for (start,) in generator.session.query(Activity.start_date)
+        if start
+    }
+    generator.session.close()
+    activity_infos = await coros.fetch_activity_ids_types(
+        only_run=only_run, existing_start_times=existing_start_times
+    )
     activity_ids = [i[0] for i in activity_infos]
     activity_types = [i[1] for i in activity_infos]
     activity_id_type_dict = dict(zip(activity_ids, activity_types))
