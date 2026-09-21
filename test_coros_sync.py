@@ -67,6 +67,11 @@ class CorosSyncTest(unittest.TestCase):
                                     "startTime": 1788036393000,
                                 },
                                 {
+                                    "labelId": 3,
+                                    "sportType": 100,
+                                    "startTime": 1787000000,
+                                },
+                                {
                                     "labelId": 2,
                                     "sportType": 100,
                                     "startTime": 1788295593,

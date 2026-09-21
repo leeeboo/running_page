@@ -77,6 +77,8 @@ class Coros:
     async def fetch_activity_ids_types(self, only_run, existing_start_times=()):
         page_number = 1
         all_activities_ids_types = []
+        # Match the existing Strava sync's seven-day incremental lookback.
+        after = max(existing_start_times, default=0) - 7 * 24 * 60 * 60
 
         mode_list_str = "100,101,102,103" if only_run else ""
         while True:
@@ -102,7 +104,7 @@ class Coros:
                         if start_time > 100_000_000_000
                         else int(start_time)
                     )
-                    if start_time in existing_start_times:
+                    if start_time < after or start_time in existing_start_times:
                         continue
                 all_activities_ids_types.append([str(label_id), sport_type])
 
