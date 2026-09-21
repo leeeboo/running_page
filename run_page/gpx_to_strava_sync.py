@@ -6,12 +6,13 @@ import gpxpy as mod_gpxpy
 from config import GPX_FOLDER
 from strava_sync import run_strava_sync
 from stravalib.exc import ActivityUploadFailed, RateLimitTimeout
+
 from utils import get_strava_last_time, make_strava_client, upload_file_to_strava
 
 
 def get_to_generate_files(last_time):
     """
-    reuturn to values one dict for upload
+    return to values one dict for upload
     and one sorted list for next time upload
     """
     file_names = os.listdir(GPX_FOLDER)
@@ -22,8 +23,8 @@ def get_to_generate_files(last_time):
             with open(file_path, "r", encoding="utf-8", errors="ignore") as r:
                 try:
                     gpx = mod_gpxpy.parse(r)
-                except Exception as e:
-                    print(f"Something is wring with {file_path} err: {str(e)}")
+                except Exception as e:  # noqa: BLE001
+                    print(f"Something is wring with {file_path} err: {e!s}")
                     continue
                 # if gpx file has no start time we ignore it.
                 if gpx.get_time_bounds()[0]:
@@ -33,7 +34,7 @@ def get_to_generate_files(last_time):
         for i in gpx_files
         if int(i[0].get_time_bounds()[0].timestamp()) > last_time
     }
-    return sorted(list(gpx_files_dict.keys())), gpx_files_dict
+    return sorted(gpx_files_dict.keys()), gpx_files_dict
 
 
 if __name__ == "__main__":
@@ -73,7 +74,7 @@ if __name__ == "__main__":
             upload_file_to_strava(client, gpx_file, "gpx")
 
         except ActivityUploadFailed as e:
-            print(f"Upload faild error {str(e)}")
+            print(f"Upload faild error {e!s}")
         # spider rule
         time.sleep(1)
 

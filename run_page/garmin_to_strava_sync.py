@@ -9,9 +9,10 @@ import os
 import sys
 import time
 
-from config import FOLDER_DICT, STRAVA_GARMIN_TYPE_DICT
+from config import FOLDER_DICT
 from garmin_sync import download_new_activities, get_downloaded_ids
 from strava_sync import run_strava_sync
+
 from utils import make_strava_client, upload_file_to_strava
 
 if __name__ == "__main__":
@@ -26,16 +27,31 @@ if __name__ == "__main__":
         "--is-cn",
         dest="is_cn",
         action="store_true",
-        help="if garmin accout is cn",
+        help="if garmin account is cn",
     )
-    parser.add_argument(
+    file_type_group = parser.add_mutually_exclusive_group()
+    file_type_group.add_argument(
+        "--gpx",
+        dest="download_file_type",
+        action="store_const",
+        const="gpx",
+        help="download GPX files (not recommended for treadmill activities)",
+    )
+    file_type_group.add_argument(
         "--tcx",
         dest="download_file_type",
         action="store_const",
         const="tcx",
-        default="gpx",
-        help="to download personal documents or ebook",
+        help="download TCX files",
     )
+    file_type_group.add_argument(
+        "--fit",
+        dest="download_file_type",
+        action="store_const",
+        const="fit",
+        help="download FIT files (recommended for Strava uploads)",
+    )
+    parser.set_defaults(download_file_type="fit")
     options = parser.parse_args()
     strava_client = make_strava_client(
         options.strava_client_id,
@@ -65,7 +81,7 @@ if __name__ == "__main__":
         )
     )
     loop.run_until_complete(future)
-    new_ids = future.result()
+    new_ids, id2title = future.result()
     print(f"To upload to strava {len(new_ids)} files")
     index = 1
     for i in new_ids:

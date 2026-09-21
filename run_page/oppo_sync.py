@@ -5,32 +5,27 @@ import os
 import time
 import xml.etree.ElementTree as ET
 from collections import namedtuple
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from xml.dom import minidom
 
 import gpxpy
 import polyline
 import requests
-from tzlocal import get_localzone
-
 from config import (
     GPX_FOLDER,
     JSON_FILE,
     SQL_FILE,
-    run_map,
-    start_point,
     TCX_FOLDER,
     UTC_TIMEZONE,
+    run_map,
+    start_point,
 )
 from generator import Generator
+from tzlocal import get_localzone
+
 from utils import adjust_time
 
 TOKEN_REFRESH_URL = "https://sport.health.heytapmobi.com/open/v1/oauth/token"
-OPPO_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:78.0) Gecko/20100101 Firefox/78.0",
-    "Content-Type": "application/json",
-    "Accept": "application/json",
-}
 
 # Query brief version of sports records
 # The query range cannot exceed one month!
@@ -44,14 +39,14 @@ Return value is like:
        "sportMode": 10,//运动模式 室内跑 详情见文档附录
        "otherSportData": {
            "avgHeartRate": 153,//平均心率 单位：count/min
-           "avgPace": 585,//平均配速 单位s/km
-           "avgStepRate": 115,//平均步频 单位step/min
-           "bestStepRate": 135,//最佳步频 单位step/min
-           "bestPace": 572,//最佳配速 单位s/km
+           "avgPace": 585,//平均配速 单位 s/km
+           "avgStepRate": 115,//平均步频 单位 step/min
+           "bestStepRate": 135,//最佳步频 单位 step/min
+           "bestPace": 572,//最佳配速 单位 s/km
            "totalCalories": 2176000,//总消耗 单位卡
            "totalDistance": 23175,//总距离 单位米
            "totalSteps": 26062,//总步数
-           "totalTime": 13562000,//总时长，单位:毫秒
+           "totalTime": 13562000,//总时长，单位：毫秒
            "totalClimb": 100//累计爬升高度，单位:米
        },
     },
@@ -64,7 +59,7 @@ Return value is like:
            "avgHeartRate": 90,//平均心率 单位：count/min
            "courseName": "零基础减脂碎片练习",//课程名称
            "finishNumber": 1,//课程完成次数
-           "trainedCalorie": 13554,//训练消耗的卡路里，单位:卡
+           "trainedCalorie": 13554,//训练消耗的卡路里，单位：卡
            "trainedDuration": 176000//实际训练时间，单位:ms
        },
     }
@@ -75,8 +70,6 @@ BRIEF_SPORT_DATA_API = "https://sport.health.heytapmobi.com/open/v1/data/sport/r
 # Query detailed sports records
 # The query range cannot exceed one day!
 DETAILED_SPORT_DATA_API = "https://sport.health.heytapmobi.com/open/v2/data/sport/record?startTimeMillis={start_time}&endTimeMillis={end_time}"
-
-TIMESTAMP_THRESHOLD_IN_MILLISECOND = 5000
 
 # If your points need trans from gcj02 to wgs84 coordinate which use by Mapbox
 TRANS_GCJ02_TO_WGS84 = True
@@ -127,8 +120,8 @@ def get_access_token(session, client_id, client_secret, refresh_token):
 
 def get_to_download_runs_ranges(session, sync_months, headers, start_timestamp):
     result = []
-    current_time = datetime.now()
-    start_datatime = datetime.fromtimestamp(start_timestamp / 1000)
+    current_time = datetime.now()  # noqa: DTZ005
+    start_datatime = datetime.fromtimestamp(start_timestamp / 1000)  # noqa: DTZ006
 
     if start_datatime < current_time + timedelta(days=-30 * sync_months):
         """retrieve the data of last 6 months."""
@@ -165,7 +158,7 @@ def parse_brief_sport_data(session, headers, temp_start, temp_end):
                 or i["sportMode"] in AVAILABLE_OUTDOOR_SPORT_MODE
             ):
                 result.append((i["startTime"], i["endTime"]))
-                print(f"sync record: start_time: " + str(i["startTime"]))
+                print("sync record: start_time: " + str(i["startTime"]))
         time.sleep(1)  # spider rule
     return result
 
@@ -189,6 +182,7 @@ def parse_raw_data_to_name_tuple(sport_data, with_gpx, with_tcx):
     start_time = sport_data["startTime"]
     other_data = sport_data["otherSportData"]
     avg_heart_rate = None
+    elevation_gain = None
     if other_data:
         avg_heart_rate = other_data.get("avgHeartRate", None)
         # fix #66
@@ -206,9 +200,10 @@ def parse_raw_data_to_name_tuple(sport_data, with_gpx, with_tcx):
 
         point_dict = prepare_track_points(sport_data, with_gpx)
 
+        gpx_data = parse_points_to_gpx(sport_data, point_dict)
+        elevation_gain = gpx_data.get_uphill_downhill().uphill
         if with_gpx is True:
-            gpx_data = parse_points_to_gpx(sport_data, point_dict)
-            download_keep_gpx(gpx_data, str(oppo_id))
+            download_keep_gpx(gpx_data.to_xml(), str(oppo_id))
         if with_tcx is True:
             parse_points_to_tcx(sport_data, point_dict)
 
@@ -220,9 +215,9 @@ def parse_raw_data_to_name_tuple(sport_data, with_gpx, with_tcx):
     ]
     polyline_str = polyline.encode(gps_data) if gps_data else ""
     start_latlng = start_point(*gps_data[0]) if gps_data else None
-    start_date = datetime.utcfromtimestamp(start_time / 1000)
+    start_date = datetime.fromtimestamp(start_time / 1000, tz=UTC)
     start_date_local = adjust_time(start_date, str(get_localzone()))
-    end = datetime.utcfromtimestamp(sport_data["endTime"] / 1000)
+    end = datetime.fromtimestamp(sport_data["endTime"] / 1000, tz=UTC)
     end_local = adjust_time(end, str(get_localzone()))
     location_country = None
     if not other_data["totalTime"]:
@@ -233,6 +228,11 @@ def parse_raw_data_to_name_tuple(sport_data, with_gpx, with_tcx):
         "name": "activity from oppo",
         # future to support others workout now only for run
         "type": map_oppo_fit_type_to_strava_activity_type(sport_data["sportMode"]),
+        "subtype": (
+            "indoor"
+            if sport_data["sportMode"] in AVAILABLE_INDOOR_SPORT_MODE
+            else map_oppo_fit_type_to_strava_activity_type(sport_data["sportMode"])
+        ),
         "start_date": datetime.strftime(start_date, "%Y-%m-%d %H:%M:%S"),
         "end": datetime.strftime(end, "%Y-%m-%d %H:%M:%S"),
         "start_date_local": datetime.strftime(start_date_local, "%Y-%m-%d %H:%M:%S"),
@@ -247,6 +247,7 @@ def parse_raw_data_to_name_tuple(sport_data, with_gpx, with_tcx):
             seconds=int((sport_data["endTime"] - sport_data["startTime"]) / 1000)
         ),
         "average_speed": other_data["totalDistance"] / other_data["totalTime"] * 1000,
+        "elevation_gain": elevation_gain,
         "location_country": location_country,
         "source": sport_data["deviceName"],
     }
@@ -271,7 +272,9 @@ def get_all_oppo_tracks(
         0
         if (last_track_date == 0)
         else int(
-            datetime.timestamp(datetime.strptime(last_track_date, "%Y-%m-%d %H:%M:%S"))
+            datetime.timestamp(
+                datetime.strptime(last_track_date, "%Y-%m-%d %H:%M:%S")  # noqa: DTZ007
+            )
             * 1000
         )
     )
@@ -280,15 +283,15 @@ def get_all_oppo_tracks(
     print(f"{len(runs)} new oppo runs to generate")
     tracks = []
     for start, end in runs:
-        print(f"parsing oppo id {str(start)}-{str(end)}")
+        print(f"parsing oppo id {start!s}-{end!s}")
         try:
             run_data = get_single_run_data(s, headers, start, end)
             track = parse_raw_data_to_name_tuple(
                 run_data, with_download_gpx, with_download_tcx
             )
             tracks.append(track)
-        except Exception as e:
-            print(f"Something wrong paring keep id {str(start)}-{str(end)}" + str(e))
+        except Exception as e:  # noqa: BLE001
+            print(f"Something wrong paring keep id {start!s}-{end!s}" + str(e))
     return tracks
 
 
@@ -372,18 +375,17 @@ def parse_points_to_gpx(sport_data, points_dict_list):
             )
             point.extensions.append(gpx_extension)
         gpx_segment.points.append(point)
-    return gpx.to_xml()
+    return gpx
 
 
 def download_keep_gpx(gpx_data, keep_id):
     try:
-        print(f"downloading keep_id {str(keep_id)} gpx")
+        print(f"downloading keep_id {keep_id!s} gpx")
         file_path = os.path.join(GPX_FOLDER, str(keep_id) + ".gpx")
         with open(file_path, "w") as fb:
             fb.write(gpx_data)
-    except:
-        print(f"wrong id {keep_id}")
-        pass
+    except Exception as e:  # noqa: BLE001
+        print(f"wrong id {keep_id}: {e!s}")
 
 
 def prepare_track_points(sport_data, with_gpx):
@@ -413,7 +415,7 @@ def prepare_track_points(sport_data, with_gpx):
             points_dict = {
                 "latitude": other_data.get("gpsPoint")[i]["latitude"],
                 "longitude": other_data.get("gpsPoint")[i]["longitude"],
-                "time": datetime.utcfromtimestamp(temp_timestamp / 1000),
+                "time": datetime.fromtimestamp(temp_timestamp / 1000, tz=UTC),
                 "hr": other_data.get("heartRate")[j]["value"],
             }
             points_dict_list.append(get_value(j, points_dict, other_data))
@@ -422,7 +424,7 @@ def prepare_track_points(sport_data, with_gpx):
 
         for i in range(value_size):
             temp_timestamp = other_data.get("heartRate")[i]["timestamp"]
-            temp_date = datetime.utcfromtimestamp(temp_timestamp / 1000)
+            temp_date = datetime.fromtimestamp(temp_timestamp / 1000, tz=UTC)
             points_dict = {
                 "time": temp_date,
                 "hr": other_data.get("heartRate")[i]["value"],
@@ -450,7 +452,7 @@ def parse_points_to_tcx(sport_data, points_dict_list):
     fit_id = str(sport_data["id"])
     # local time
     start_time = sport_data["startTime"]
-    start_date = datetime.utcfromtimestamp(start_time / 1000)
+    start_date = datetime.fromtimestamp(start_time / 1000, tz=UTC)
     fit_start_time = datetime.strftime(
         adjust_time(start_date, UTC_TIMEZONE), "%Y-%m-%dT%H:%M:%SZ"
     )
@@ -480,7 +482,7 @@ def parse_points_to_tcx(sport_data, points_dict_list):
     activities.append(activity)
     #   Id
     activity_id = ET.Element("Id")
-    activity_id.text = fit_start_time  # Codoon use start_time as ID
+    activity_id.text = fit_start_time
     activity.append(activity_id)
     #   Creator
     activity_creator = ET.Element("Creator", {"xsi:type": "Device_t"})
@@ -508,13 +510,10 @@ def parse_points_to_tcx(sport_data, points_dict_list):
         else:
             break
 
-        if idx + 1 != len(points_dict_list):
-            if (
-                item["distance"]
-                < target_distance
-                <= points_dict_list[idx + 1]["distance"]
-            ):
-                lap_split_indexes.append(idx)
+        if idx + 1 != len(points_dict_list) and (
+            item["distance"] < target_distance <= points_dict_list[idx + 1]["distance"]
+        ):
+            lap_split_indexes.append(idx)
 
     if len(lap_split_indexes) == 1:
         points_dict_list_chunks = [points_dict_list]

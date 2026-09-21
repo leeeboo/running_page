@@ -1,0 +1,111 @@
+import asyncio
+import datetime
+import tempfile
+import unittest
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
+
+import httpx
+from coros_sync import Coros
+from generator import Generator
+from generator.db import Activity
+
+
+class CorosSyncTest(unittest.TestCase):
+    def test_login_uses_instance_options(self):
+        async def check():
+            transport = httpx.MockTransport(
+                lambda request: httpx.Response(
+                    200, json={"data": {"accessToken": "test"}}
+                )
+            )
+            client = httpx.AsyncClient
+            with patch(
+                "coros_sync.httpx.AsyncClient",
+                side_effect=lambda **kw: client(transport=transport, **kw),
+            ):
+                coros = Coros("account", "hashed-password", is_only_running=True)
+                await coros.init()
+                self.assertTrue(coros.is_only_running)
+                await coros.req.aclose()
+
+        asyncio.run(check())
+
+    def test_failed_activity_list_is_not_empty_success(self):
+        async def check():
+            coros = Coros("account", "password")
+            coros.req = AsyncMock()
+            coros.req.get.return_value = httpx.Response(
+                200,
+                json={"result": "999", "message": "expired"},
+                request=httpx.Request(
+                    "GET", "https://teamcnapi.coros.com/activity/query"
+                ),
+            )
+            with self.assertRaises(RuntimeError):
+                await coros.fetch_activity_ids_types(False)
+
+        asyncio.run(check())
+
+    def test_coros_import_preserves_strava_history(self):
+        with tempfile.TemporaryDirectory() as folder:
+            generator = Generator(str(Path(folder) / "test.db"))
+            generator.session.add(
+                Activity(
+                    run_id=123,
+                    name="Original Strava title",
+                    start_date="2026-08-29 20:46:33+00:00",
+                )
+            )
+            generator.session.commit()
+
+            def track(run_id, start):
+                activity = SimpleNamespace(
+                    id=run_id,
+                    name="COROS",
+                    type="Run",
+                    subtype="",
+                    start_date=start,
+                    start_date_local=start,
+                    start_latlng=None,
+                    location_country="",
+                    distance=1000,
+                    moving_time=datetime.timedelta(minutes=5),
+                    elapsed_time=datetime.timedelta(minutes=5),
+                    average_heartrate=130,
+                    average_speed=3.3,
+                    elevation_gain=0,
+                    map=None,
+                )
+                return SimpleNamespace(
+                    file_names=[str(run_id)], to_namedtuple=lambda **kw: activity
+                )
+
+            tracks = [
+                track(1000, "2026-08-29 20:46:33"),
+                track(2000, "2026-09-01 20:46:33"),
+            ]
+            with (
+                patch(
+                    "generator.track_loader.TrackLoader.load_tracks",
+                    return_value=tracks,
+                ),
+                patch("generator.save_synced_data_file_list") as saved,
+            ):
+                generator.sync_from_data_dir(
+                    folder, "fit", deduplicate_by_start_time=True
+                )
+                generator.sync_from_data_dir(
+                    folder, "fit", deduplicate_by_start_time=True
+                )
+                self.assertEqual(generator.session.query(Activity).count(), 2)
+                self.assertEqual(
+                    generator.session.get(Activity, 123).name, "Original Strava title"
+                )
+                self.assertEqual(saved.call_args.args[0], ["1000", "2000"])
+            generator.session.close()
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -8,7 +8,7 @@ import time
 import urllib.parse
 import xml.etree.ElementTree as ET
 from collections import namedtuple
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from xml.dom import minidom
 
 import eviltransform
@@ -27,6 +27,7 @@ from config import (
 )
 from generator import Generator
 from tzlocal import get_localzone
+
 from utils import adjust_time_to_utc, adjust_timestamp_to_utc, to_date
 
 # struct body
@@ -35,17 +36,18 @@ FitType = np.dtype(
         "names": [
             "time",
             "bpm",
+            "step",
             "lati",
             "longi",
             "elevation",
-        ],  # unix timestamp, heart bpm, LatitudeDegrees, LongitudeDegrees, elevation
-        "formats": ["i", "S4", "S32", "S32", "S8"],
+        ],  # unix timestamp, heart bpm, step, LatitudeDegrees, LongitudeDegrees, elevation
+        "formats": ["i", "S4", "S4", "S32", "S32", "S8"],
     }
 )
 
 # device info
 user_agent = "CodoonSport(8.9.0 1170;Android 7;Sony XZ1)"
-did = "24-00000000-03e1-7dd7-0033-c5870033c588"
+did = "24-ffffffff-faac-3052-0033-c5870033c587"
 # May be Forerunner 945?
 CONNECT_API_PART_NUMBER = "006-D2449-00"
 
@@ -70,9 +72,9 @@ TCX_TYPE_DICT = {
 }
 
 # only for running sports, if you want others, please change the True to False
-IS_ONLY_RUN = True
+IS_ONLY_RUN = False
 
-# If your points need trans from gcj02 to wgs84 coordinate which use by Mappbox
+# If your points need trans from gcj02 to wgs84 coordinate which use by Mapbox
 TRANS_GCJ02_TO_WGS84 = False
 # trans the coordinate data until the TRANS_END_DATE, work with TRANS_GCJ02_TO_WGS84 = True
 TRANS_END_DATE = "2014-03-24"
@@ -100,24 +102,12 @@ def device_info_headers():
 
 def download_codoon_gpx(gpx_data, log_id):
     try:
-        print(f"downloading codoon {str(log_id)} gpx")
+        print(f"downloading codoon {log_id!s} gpx")
         file_path = os.path.join(GPX_FOLDER, str(log_id) + ".gpx")
         with open(file_path, "w") as fb:
             fb.write(gpx_data)
-    except:
-        print(f"wrong id {log_id}")
-        pass
-
-
-def set_array(fit_array, array_time, array_bpm, array_lati, array_longi, ele):
-    fit_data = np.array(
-        (array_time, array_bpm, array_lati, array_longi, ele), dtype=FitType
-    )
-    if fit_array is None:
-        fit_array = np.array([fit_data], dtype=FitType)
-    else:
-        fit_array = np.append(fit_array, fit_data)
-    return fit_array
+    except Exception as e:  # noqa: BLE001
+        print(f"wrong id {log_id} error {e!s}")
 
 
 def formated_input(
@@ -186,7 +176,18 @@ def tcx_output(fit_array, run_data):
     #       DistanceMeters
     activity_lap.append(formated_input(run_data, "total_length", "DistanceMeters"))
     #       Calories
-    activity_lap.append(formated_input(run_data, "total_calories", "Calories"))
+    if "total_calories" in run_data:
+        activity_lap.append(formated_input(run_data, "total_calories", "Calories"))
+    #       AverageCadence
+    if "average_step_cadence" in run_data:
+        activity_lap.append(
+            formated_input(run_data, "average_step_cadence", "AverageCadence")
+        )
+    #       MaximumCadence
+    if "max_step_cadence" in run_data:
+        activity_lap.append(
+            formated_input(run_data, "max_step_cadence", "MaximumCadence")
+        )
 
     # Track
     track = ET.Element("Track")
@@ -202,14 +203,21 @@ def tcx_output(fit_array, run_data):
         # HeartRateBpm
         # None was converted to bytes by np.dtype, becoming a string "None" after decode...-_-
         # as well as LatitudeDegrees and LongitudeDegrees below
-        if not bytes.decode(i["bpm"]) == "None":
+        if bytes.decode(i["bpm"]) != "None":
             bpm = ET.Element("HeartRateBpm")
             bpm_value = ET.Element("Value")
             bpm.append(bpm_value)
             bpm_value.text = bytes.decode(i["bpm"])
             tp.append(bpm)
+        # Cadence
+        # The unit is step-per-minute in Garmin
+        # but is stride-per-minute in Strava, Coros, and RQrun
+        if bytes.decode(i["step"]) != "None":
+            step = ET.Element("Cadence")
+            step.text = bytes.decode(i["step"])
+            tp.append(step)
         # Position
-        if not bytes.decode(i["lati"]) == "None":
+        if bytes.decode(i["lati"]) != "None":
             position = ET.Element("Position")
             tp.append(position)
             #   LatitudeDegrees
@@ -237,34 +245,64 @@ def tcx_output(fit_array, run_data):
     author_part.text = CONNECT_API_PART_NUMBER
     author.append(author_part)
     # write to TCX file
-    xml_str = minidom.parseString(ET.tostring(training_center_database)).toprettyxml()
-    with open(TCX_FOLDER + "/" + fit_id + ".tcx", "w") as f:
-        f.write(str(xml_str))
+    try:
+        xml_str = minidom.parseString(
+            ET.tostring(training_center_database)
+        ).toprettyxml()
+        with open(TCX_FOLDER + "/" + fit_id + ".tcx", "w") as f:
+            f.write(str(xml_str))
+    except Exception as e:  # noqa: BLE001
+        print(f"empty database error {e!s}")
 
 
-# TODO time complexity is too heigh, need to be reduced
 def tcx_job(run_data):
     # fit struct array
     fit_array = None
+    fit_list = []
+    fit_hrs = {}
+    fit_steps = {}
 
     # raw data
     own_heart_rate = None
     own_points = None
+    own_steps = None
     if "heart_rate" in run_data:
         own_heart_rate = run_data["heart_rate"]  # bpm key-value
+    if "user_steps_list_perm" in run_data:
+        own_steps = run_data["user_steps_list_perm"]  # step key-value
     if "points" in run_data:
         own_points = run_data["points"]  # track points
+
     # get single bpm
     if own_heart_rate is not None:
         for single_time, single_bpm in own_heart_rate.items():
             single_time = adjust_timestamp_to_utc(single_time, str(get_localzone()))
-            # set bpm data
-            fit_array = set_array(fit_array, single_time, single_bpm, None, None, None)
+            fit_hrs[single_time] = single_bpm
+
+    # get single step
+    if own_steps is not None:
+        for own_step in own_steps:
+            [single_time, single_step] = own_step[0:2]
+            # firstly, convert 2025-09-16 20:08:00 to 2025-09-16T20:08:00
+            # also,    convert 2015-09-16+20:08:00 to 2015-09-16T20:08:00
+            single_time = single_time.replace(" ", "T").replace("+", "T")
+            # move to UTC
+            utc = adjust_time_to_utc(to_date(single_time), str(get_localzone()))
+            time_stamp = utc.strftime("%Y-%m-%dT%H:%M:%SZ")
+            # to time array
+            time_array = time.strptime(time_stamp, "%Y-%m-%dT%H:%M:%SZ")
+            # to unix timestamp
+            try:
+                unix_time = int(time.mktime(time_array))
+            except OverflowError as e:
+                print(e, time_stamp)
+                continue
+
+            fit_steps[unix_time] = int(single_step)
+
     # get single track point
-    if own_points is not None:
+    if own_points:
         for point in own_points:
-            repeat_flag = False
-            # TODO add elevation information
             time_stamp = point.get("time_stamp")
             latitude = point.get("latitude")
             longitude = point.get("longitude")
@@ -276,27 +314,37 @@ def tcx_job(run_data):
             # to time array
             time_array = time.strptime(time_stamp, "%Y-%m-%dT%H:%M:%SZ")
             # to unix timestamp
-            unix_time = int(time.mktime(time_array))
-            # set GPS data
-            # if the track point which has the same time has been added
-            if fit_array is None:
-                fit_array = set_array(
-                    fit_array, unix_time, None, latitude, longitude, elevation
-                )
-            else:
-                for i in fit_array:
-                    if i["time"] == unix_time:
-                        i["lati"] = latitude
-                        i["longi"] = longitude
-                        i["elevation"] = elevation
-                        repeat_flag = True  # unix_time repeated
-                        break
-                if not repeat_flag:
-                    fit_array = set_array(
-                        fit_array, unix_time, None, latitude, longitude, elevation
-                    )
+            try:
+                unix_time = int(time.mktime(time_array))
+            except OverflowError as e:
+                print(e, time_stamp)
+                continue
 
-    if fit_array is not None:
+            # get heart rate at unix_time
+            hr = fit_hrs.get(unix_time, None)
+
+            # get steps per minute at unix_time
+            step = fit_steps.get(unix_time, None)
+
+            fit_list.append((unix_time, hr, step, latitude, longitude, elevation))
+    elif fit_hrs:
+        # not trackpoints but heart rates
+        print(
+            "No track points, but heart rates, might have steps " + str(run_data["id"])
+        )
+        for unix_time, hr in fit_hrs.items():
+            # get heart rate at unix_time
+            step = fit_steps.get(unix_time, None)
+            fit_list.append((unix_time, hr, step, None, None, None))
+    elif fit_steps:
+        # not trackpoints but steps
+        print("No track points, only steps " + str(run_data["id"]))
+        for unix_time, step in fit_steps.items():
+            fit_list.append((unix_time, None, step, None, None, None))
+
+    if fit_list:
+        # track points
+        fit_array = np.array(fit_list, dtype=FitType)
         # order array
         fit_array = np.sort(fit_array, order="time")
         # write to TCX file
@@ -322,12 +370,12 @@ class CodoonAuth:
             )
             if not r.ok:
                 print(r.json())
-                raise Exception("refresh_token expired")
+                raise Exception("refresh_token expired")  # noqa: TRY002
 
             self.token = r.json()["access_token"]
 
-    def reload(self, params={}, token=""):
-        self.params = params
+    def reload(self, params=None, token=""):
+        self.params = params if params is not None else {}
         if token:
             self.token = token
         return self
@@ -343,7 +391,7 @@ class CodoonAuth:
         if query != "":
             query = urllib.parse.unquote(query)
 
-        pre_string = f"Authorization={token}&Davinci={davinci}&Did={did}&Timestamp={str(timestamp)}|path={path}|body={body_str}|{query}"
+        pre_string = f"Authorization={token}&Davinci={davinci}&Did={did}&Timestamp={timestamp!s}|path={path}|body={body_str}|{query}"
         return make_signature(pre_string)
 
     def __call__(self, r):
@@ -414,13 +462,13 @@ class Codoon:
         )
         login_data = r.json()
         if login_data.__contains__("status") and login_data["status"] == "Error":
-            raise Exception(login_data["description"])
+            raise Exception(login_data["description"])  # noqa: TRY002
         self.refresh_token = login_data["refresh_token"]
         self.token = login_data["access_token"]
         self.user_id = login_data["user_id"]
         self.auth.reload(token=self.token)
         print(
-            f"your refresh_token and user_id are {str(self.refresh_token)} {str(self.user_id)}"
+            f"your refresh_token and user_id are {self.refresh_token!s} {self.user_id!s}"
         )
 
     def get_runs_records(self, page=1):
@@ -432,7 +480,7 @@ class Codoon:
         )
         if not r.ok:
             print(r.json())
-            raise Exception("get runs records error")
+            raise Exception("get runs records error")  # noqa: TRY002
 
         runs = r.json()["data"]["log_list"]
         if IS_ONLY_RUN:
@@ -448,7 +496,7 @@ class Codoon:
             return []
         try:
             points = [[p["latitude"], p["longitude"]] for p in points]
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             print(str(e))
             points = []
         return points
@@ -461,7 +509,9 @@ class Codoon:
                 "latitude": point["latitude"],
                 "longitude": point["longitude"],
                 "elevation": point["elevation"],
-                "time": adjust_time_to_utc(to_date(point["time_stamp"]), BASE_TIMEZONE),
+                "time": adjust_time_to_utc(
+                    to_date(point["time_stamp"]), BASE_TIMEZONE
+                ).replace(tzinfo=UTC),
             }
             points_dict_list.append(points_dict)
         gpx = gpxpy.gpx.GPX()
@@ -477,7 +527,7 @@ class Codoon:
         for p in points_dict_list:
             point = gpxpy.gpx.GPXTrackPoint(**p)
             gpx_segment.points.append(point)
-        return gpx.to_xml()
+        return gpx
 
     def get_single_run_record(self, route_id):
         print(f"Get single run for codoon id {route_id}")
@@ -491,29 +541,32 @@ class Codoon:
         )
         if not r.ok:
             print(r)
-            raise Exception("get runs records error")
+            raise Exception("get runs records error")  # noqa: TRY002
         data = r.json()
         return data
 
     @staticmethod
     def _gt(dt_str):
-        dt, _, us = dt_str.partition(".")
-        return datetime.strptime(dt, "%Y-%m-%dT%H:%M:%S")
+        dt, _, _ = dt_str.partition(".")
+        return datetime.strptime(dt, "%Y-%m-%dT%H:%M:%S")  # noqa: DTZ007
 
     def parse_raw_data_to_namedtuple(
-        self, run_data, old_gpx_ids, with_gpx=False, with_tcx=False
+        self, run_data, old_gpx_ids, old_tcx_ids=None, with_gpx=False, with_tcx=False
     ):
         run_data = run_data["data"]
         log_id = run_data["id"]
 
         if with_tcx:
-            tcx_job(run_data)  # TCX part
+            if old_tcx_ids is not None and str(log_id) in old_tcx_ids:
+                print(f"skip existing tcx for codoon id {log_id}")
+            else:
+                tcx_job(run_data)  # TCX part
 
         start_time = run_data.get("start_time")
         if not start_time:
             return
         end_time = run_data["end_time"]
-        run_points_data = run_data["points"] if "points" in run_data else None
+        run_points_data = run_data.get("points", None)
 
         latlng_data = self.parse_latlng(run_points_data)
         if TRANS_GCJ02_TO_WGS84:
@@ -528,11 +581,13 @@ class Codoon:
                     p["latitude"] = latlng_data[i][0]
                     p["longitude"] = latlng_data[i][1]
 
-        if with_gpx:
-            # pass the track no points
-            if str(log_id) not in old_gpx_ids and run_points_data:
-                gpx_data = self.parse_points_to_gpx(run_points_data)
-                download_codoon_gpx(gpx_data, str(log_id))
+        elevation_gain = None
+        if run_points_data:
+            gpx_data = self.parse_points_to_gpx(run_points_data)
+            elevation_gain = gpx_data.get_uphill_downhill().uphill
+            if with_gpx and str(log_id) not in old_gpx_ids:
+                # pass the track no points
+                download_codoon_gpx(gpx_data.to_xml(), str(log_id))
         heart_rate_dict = run_data.get("heart_rate")
         heart_rate = None
         if heart_rate_dict:
@@ -547,7 +602,7 @@ class Codoon:
         # only support run now, if you want all type comments these two lines
         if IS_ONLY_RUN and sport_type != 1:
             return
-        cast_type = TYPE_DICT[sport_type] if sport_type in TYPE_DICT else sport_type
+        cast_type = TYPE_DICT.get(sport_type, sport_type)
         if not run_data["total_time"]:
             print(f"ID {log_id} has no total time just ignore please check")
             return
@@ -555,6 +610,7 @@ class Codoon:
             "id": log_id,
             "name": str(cast_type) + " from codoon",
             "type": cast_type,
+            "subtype": cast_type,
             "start_date": datetime.strftime(start_date, "%Y-%m-%d %H:%M:%S"),
             "end": datetime.strftime(end_date, "%Y-%m-%d %H:%M:%S"),
             "start_date_local": datetime.strftime(start_date, "%Y-%m-%d %H:%M:%S"),
@@ -566,9 +622,10 @@ class Codoon:
             "distance": run_data["total_length"],
             "moving_time": timedelta(seconds=run_data["total_time"]),
             "elapsed_time": timedelta(
-                seconds=int((end_date.timestamp() - start_date.timestamp()))
+                seconds=int(end_date.timestamp() - start_date.timestamp())
             ),
             "average_speed": run_data["total_length"] / run_data["total_time"],
+            "elevation_gain": elevation_gain,
             "location_country": location_country,
             "source": "Codoon",
         }
@@ -577,15 +634,21 @@ class Codoon:
     def get_old_tracks(self, old_ids, with_gpx=False, with_tcx=False):
         run_records = self.get_runs_records()
 
-        old_gpx_ids = os.listdir(GPX_FOLDER)
-        old_gpx_ids = [i.split(".")[0] for i in old_gpx_ids if not i.startswith(".")]
+        old_gpx_ids = os.listdir(GPX_FOLDER) if os.path.isdir(GPX_FOLDER) else []
+        old_gpx_ids = {i.split(".")[0] for i in old_gpx_ids if not i.startswith(".")}
+        old_tcx_ids = set()
+        if with_tcx:
+            old_tcx_files = os.listdir(TCX_FOLDER) if os.path.isdir(TCX_FOLDER) else []
+            old_tcx_ids = {
+                i.split(".")[0] for i in old_tcx_files if not i.startswith(".")
+            }
         new_run_routes = [i for i in run_records if str(i["log_id"]) not in old_ids]
         tracks = []
         for i in new_run_routes:
             run_data = self.get_single_run_record(i["route_id"])
             run_data["data"]["id"] = i["log_id"]
             track = self.parse_raw_data_to_namedtuple(
-                run_data, old_gpx_ids, with_gpx, with_tcx
+                run_data, old_gpx_ids, old_tcx_ids, with_gpx, with_tcx
             )
             if track:
                 tracks.append(track)
@@ -634,4 +697,4 @@ if __name__ == "__main__":
     generator.sync_from_app(tracks)
     activities_list = generator.load()
     with open(JSON_FILE, "w") as f:
-        json.dump(activities_list, f)
+        json.dump(activities_list, f, indent=0)

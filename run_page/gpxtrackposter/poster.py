@@ -60,6 +60,7 @@ class Poster:
         self.trans = None
         self.set_language(None)
         self.tc_offset = datetime.now(pytz.timezone("Asia/Shanghai")).utcoffset()
+        self.github_style = "align-firstday"
 
     def set_language(self, language):
         if language:
@@ -68,7 +69,6 @@ class Poster:
             except locale.Error as e:
                 print(f'Cannot set locale to "{language}": {e}')
                 language = None
-                pass
 
         # Fall-back to NullTranslations, if the specified language translation cannot be found.
         if language:
@@ -99,8 +99,8 @@ class Poster:
             else:
                 self.tracks_by_date[text_date] = [track]
             self.length_range.extend(track.length)
-        for tracks in self.tracks_by_date.values():
-            length = sum([t.length for t in tracks])
+        for date_tracks in self.tracks_by_date.values():
+            length = sum([t.length for t in date_tracks])
             self.length_range_by_date.extend(length)
 
     def draw(self, drawer, output):
@@ -110,14 +110,14 @@ class Poster:
         width = self.width
         if self.drawer_type == "plain":
             height = height - 100
-            self.colors["background"] = "#1a1a1a"
-            self.colors["track"] = "red"
-            self.colors["special"] = "yellow"
-            self.colors["text"] = "#e1ed5e"
+        # Year summary has its own layout, use full size (no height adjustment)
         d = svgwrite.Drawing(output, (f"{width}mm", f"{height}mm"))
         d.viewbox(0, 0, self.width, height)
         d.add(d.rect((0, 0), (width, height), fill=self.colors["background"]))
-        if not self.drawer_type == "plain":
+        if self.drawer_type == "year_summary":
+            # Year summary drawer handles its own layout
+            self.__draw_tracks(d, XY(width - 10, height - 10), XY(5, 5))
+        elif self.drawer_type != "plain":
             self.__draw_header(d)
             self.__draw_footer(d)
             self.__draw_tracks(d, XY(width - 20, height - 30 - 30), XY(10, 30))
@@ -168,7 +168,7 @@ class Poster:
 
         d.add(
             d.text(
-                self.trans("ATHLETE"),
+                self.trans("Runner"),
                 insert=(10, self.height - 20),
                 fill=text_color,
                 style=header_style,
@@ -182,37 +182,41 @@ class Poster:
                 style=value_style,
             )
         )
-
-        d.add(
-            d.text(
-                self.trans("SPECIAL TRACKS"),
-                insert=(65, self.height - 20),
-                fill=text_color,
-                style=header_style,
+        if self.drawer_type != "monthoflife":
+            d.add(
+                d.text(
+                    self.trans("SPECIAL TRACKS"),
+                    insert=(65, self.height - 20),
+                    fill=text_color,
+                    style=header_style,
+                )
             )
-        )
 
-        d.add(d.rect((65, self.height - 17), (2.6, 2.6), fill=self.colors["special"]))
-
-        d.add(
-            d.text(
-                f"Over {special_distance1:.1f} km",
-                insert=(70, self.height - 14.5),
-                fill=text_color,
-                style=small_value_style,
+            d.add(
+                d.rect((65, self.height - 17), (2.6, 2.6), fill=self.colors["special"])
             )
-        )
 
-        d.add(d.rect((65, self.height - 13), (2.6, 2.6), fill=self.colors["special2"]))
-
-        d.add(
-            d.text(
-                f"Over {special_distance2:.1f} km",
-                insert=(70, self.height - 10.5),
-                fill=text_color,
-                style=small_value_style,
+            d.add(
+                d.text(
+                    f"Over {special_distance1:.1f} {self.u()}",
+                    insert=(70, self.height - 14.5),
+                    fill=text_color,
+                    style=small_value_style,
+                )
             )
-        )
+
+            d.add(
+                d.rect((65, self.height - 13), (2.6, 2.6), fill=self.colors["special2"])
+            )
+
+            d.add(
+                d.text(
+                    f"Over {special_distance2:.1f} {self.u()}",
+                    insert=(70, self.height - 10.5),
+                    fill=text_color,
+                    style=small_value_style,
+                )
+            )
 
         d.add(
             d.text(

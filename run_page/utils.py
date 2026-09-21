@@ -6,7 +6,7 @@ import pytz
 
 try:
     from rich import print
-except:
+except Exception:  # noqa: S110, BLE001
     pass
 from generator import Generator
 from stravalib.client import Client
@@ -30,27 +30,40 @@ def adjust_timestamp_to_utc(timestamp, tz_name):
 
 
 def to_date(ts):
-    # TODO use https://docs.python.org/3/library/datetime.html#datetime.datetime.fromisoformat
-    # once we decide to move on to python v3.7+
-    ts_fmts = ["%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S.%f"]
+    """
+    Parse ISO format timestamp string to datetime object.
+    Uses datetime.fromisoformat() for standard ISO format strings.
+    Falls back to strptime for non-standard formats.
+    """
+    # Try fromisoformat first (Python 3.7+)
+    try:
+        return datetime.fromisoformat(ts)
+    except ValueError:
+        # Fallback to strptime for non-standard formats
+        ts_fmts = ["%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S.%f"]
+        for ts_fmt in ts_fmts:
+            try:
+                return datetime.strptime(ts, ts_fmt)  # noqa: DTZ007
+            except ValueError:
+                pass
+        raise ValueError(f"cannot parse timestamp {ts} into date")
 
-    for ts_fmt in ts_fmts:
-        try:
-            # performance with using exceptions
-            # shouldn't be an issue since it's an offline cmdline tool
-            return datetime.strptime(ts, ts_fmt)
-        except ValueError:
-            print(
-                f"Warning: Can not execute strptime {ts} with ts_fmt {ts_fmt}, try next one..."
-            )
-            pass
 
-    raise ValueError(f"cannot parse timestamp {ts} into date with fmts: {ts_fmts}")
-
-
-def make_activities_file(sql_file, data_dir, json_file, file_suffix="gpx"):
+def make_activities_file(
+    sql_file,
+    data_dir,
+    json_file,
+    file_suffix="gpx",
+    activity_title_dict=None,
+    deduplicate_by_start_time=False,
+):
     generator = Generator(sql_file)
-    generator.sync_from_data_dir(data_dir, file_suffix=file_suffix)
+    generator.sync_from_data_dir(
+        data_dir,
+        file_suffix=file_suffix,
+        activity_title_dict=activity_title_dict,
+        deduplicate_by_start_time=deduplicate_by_start_time,
+    )
     activities_list = generator.load()
     with open(json_file, "w") as f:
         json.dump(activities_list, f)
@@ -87,8 +100,8 @@ def get_strava_last_time(client, is_milliseconds=True):
         if is_milliseconds:
             last_time = last_time * 1000
         return last_time
-    except Exception as e:
-        print(f"Something wrong to get last time err: {str(e)}")
+    except Exception as e:  # noqa: BLE001
+        print(f"Something wrong to get last time err: {e!s}")
         return 0
 
 
@@ -104,9 +117,7 @@ def upload_file_to_strava(client, file_name, data_type, force_to_run=True):
 
         except RateLimitExceeded as e:
             timeout = e.timeout
-            print()
             print(f"Strava API Rate Limit Exceeded. Retry after {timeout} seconds")
-            print()
             time.sleep(timeout)
             if force_to_run:
                 r = client.upload_activity(

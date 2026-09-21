@@ -1,18 +1,19 @@
+#!/usr/bin/env python3
 import argparse
 import os
 import time
 
 from config import TCX_FOLDER
 from strava_sync import run_strava_sync
-from stravalib.exc import RateLimitTimeout, ActivityUploadFailed
+from stravalib.exc import ActivityUploadFailed, RateLimitTimeout
 from tcxreader.tcxreader import TCXReader
 
-from utils import make_strava_client, get_strava_last_time, upload_file_to_strava
+from utils import get_strava_last_time, make_strava_client, upload_file_to_strava
 
 
 def get_to_generate_files(last_time):
     """
-    reuturn to values one dict for upload
+    return to values one dict for upload
     and one sorted list for next time upload
     """
     file_names = os.listdir(TCX_FOLDER)
@@ -29,7 +30,7 @@ def get_to_generate_files(last_time):
         and int(i[0].trackpoints[0].time.timestamp()) > last_time
     }
 
-    return sorted(list(tcx_files_dict.keys())), tcx_files_dict
+    return sorted(tcx_files_dict.keys()), tcx_files_dict
 
 
 if __name__ == "__main__":
@@ -69,7 +70,7 @@ if __name__ == "__main__":
             upload_file_to_strava(client, tcx_file, "tcx")
 
         except ActivityUploadFailed as e:
-            print(f"Upload faild error {str(e)}")
+            print(f"Upload failed error {e!s}")
         # spider rule
         time.sleep(1)
 

@@ -9,7 +9,6 @@ import argparse
 import calendar
 import datetime
 import math
-from typing import List, Optional
 
 import svgwrite
 
@@ -67,7 +66,13 @@ class CircularDrawer(TracksDrawer):
         self._ring_color = args.circular_ring_color
 
     def draw(self, dr: svgwrite.Drawing, size: XY, offset: XY):
-        """Draw the circular Poster using distances broken down by time"""
+        dr.add(
+            dr.rect(
+                insert=offset.tuple(),
+                size=size.tuple(),
+                fill=self.poster.colors["background"],
+            )
+        )
         if self.poster.tracks is None:
             raise PosterError("No tracks to draw.")
         if self.poster.length_range_by_date is None:
@@ -123,7 +128,7 @@ class CircularDrawer(TracksDrawer):
             a1 = math.radians(day * df)
             a2 = math.radians((day + 1) * df)
             if date.day == 1:
-                (_, last_day) = calendar.monthrange(date.year, date.month)
+                _, last_day = calendar.monthrange(date.year, date.month)
                 a3 = math.radians((day + last_day - 1) * df)
                 sin_a1, cos_a1 = math.sin(a1), math.cos(a1)
                 sin_a3, cos_a3 = math.sin(a3), math.cos(a3)
@@ -171,7 +176,7 @@ class CircularDrawer(TracksDrawer):
             day += 1
             date += datetime.timedelta(1)
 
-    def _determine_ring_distance(self) -> Optional[float]:
+    def _determine_ring_distance(self) -> float | None:
         length_range = self.poster.length_range_by_date
         ring_distance = None
         for distance in [1.0, 5.0, 10.0, 50.0]:
@@ -214,7 +219,7 @@ class CircularDrawer(TracksDrawer):
     def _draw_circle_segment(
         self,
         dr: svgwrite.Drawing,
-        tracks: List[Track],
+        tracks: list[Track],
         a1: float,
         a2: float,
         rr: ValueRange,

@@ -1,13 +1,13 @@
+#!/usr/bin/env python3
 import argparse
 import os
 import time
-from datetime import datetime, timedelta
 
 from config import OUTPUT_DIR
 from nike_sync import make_new_gpxs, run
 from strava_sync import run_strava_sync
 
-from utils import make_strava_client, get_strava_last_time, upload_file_to_strava
+from utils import get_strava_last_time, make_strava_client, upload_file_to_strava
 
 
 def get_to_generate_files(last_time):
@@ -29,8 +29,14 @@ if __name__ == "__main__":
     parser.add_argument("client_id", help="strava client id")
     parser.add_argument("client_secret", help="strava client secret")
     parser.add_argument("strava_refresh_token", help="strava refresh token")
+    parser.add_argument(
+        "--continue-sync",
+        dest="continue_sync",
+        action="store_true",
+        help="Continue syncing from the last activity",
+    )
     options = parser.parse_args()
-    run(options.nike_refresh_token)
+    run(options.nike_refresh_token, options.continue_sync)
 
     time.sleep(2)
 
