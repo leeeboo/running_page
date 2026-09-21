@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import httpx
-from coros_sync import Coros
+from coros_sync import Coros, download_and_generate
 from generator import Generator
 from generator.db import Activity
 
@@ -87,6 +87,32 @@ class CorosSyncTest(unittest.TestCase):
             self.assertEqual(
                 await coros.fetch_activity_ids_types(False, {1788036393}), [["2", 100]]
             )
+
+        asyncio.run(check())
+
+    def test_download_retries_only_failed_files(self):
+        async def check():
+            coros = AsyncMock()
+            coros.fetch_activity_ids_types.return_value = [["1", 100], ["2", 100]]
+            attempts = {}
+
+            async def download(label_id, *args):
+                attempts[label_id] = attempts.get(label_id, 0) + 1
+                if label_id == "1" and attempts[label_id] == 1:
+                    return None, None
+                return label_id, label_id + ".fit"
+
+            coros.download_activity.side_effect = download
+            with (
+                patch("coros_sync.Coros", return_value=coros),
+                patch("coros_sync.Generator"),
+                patch("coros_sync.get_downloaded_ids", return_value=[]),
+                patch("coros_sync.make_activities_file") as generated,
+                patch("coros_sync.asyncio.sleep", new_callable=AsyncMock),
+            ):
+                await download_and_generate("account", "password", False, "fit")
+                self.assertEqual(attempts, {"1": 2, "2": 1})
+                generated.assert_called_once()
 
         asyncio.run(check())
 

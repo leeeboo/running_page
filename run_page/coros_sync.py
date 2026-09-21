@@ -143,10 +143,10 @@ class Coros:
             return label_id, fname
         except httpx.HTTPStatusError as exc:
             print(
-                f"Failed to download {file_url} with status code {response.status_code}: {exc}"
+                f"Failed to download activity {label_id}: HTTP {exc.response.status_code}"
             )
         except Exception as exc:  # noqa: BLE001
-            print(f"Error occurred while downloading {file_url}: {exc}")
+            print(f"Download interrupted for activity {label_id}: {type(exc).__name__}")
         if file_path and os.path.exists(file_path):
             print(f"Delete the corrupted fit file: {fname}")
             os.remove(file_path)
@@ -182,18 +182,30 @@ async def download_and_generate(account, password, only_run, file_type):
     print("to_generate_activity_ids: ", len(to_generate_coros_ids))
 
     start_time = time.time()
-    results = await gather_with_concurrency(
-        10,
-        [
-            coros.download_activity(
-                label_id, activity_id_type_dict[label_id], file_type
-            )
-            for label_id in to_generate_coros_ids
-        ],
-    )
+    pending_ids = to_generate_coros_ids
+    for attempt in range(3):
+        results = await gather_with_concurrency(
+            10,
+            [
+                coros.download_activity(
+                    label_id, activity_id_type_dict[label_id], file_type
+                )
+                for label_id in pending_ids
+            ],
+        )
+        pending_ids = [
+            label_id
+            for label_id, result in zip(pending_ids, results)
+            if result[0] is None
+        ]
+        if not pending_ids:
+            break
+        if attempt < 2:
+            print(f"Retrying {len(pending_ids)} failed COROS downloads")
+            await asyncio.sleep(2**attempt)
     print(f"Download finished. Elapsed {time.time()-start_time} seconds")
     await coros.req.aclose()
-    if any(label_id is None for label_id, _ in results):
+    if pending_ids:
         raise RuntimeError("Some COROS activities failed to download; retry the sync")
     make_activities_file(
         SQL_FILE, folder, JSON_FILE, file_type, deduplicate_by_start_time=True
