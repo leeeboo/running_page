@@ -423,10 +423,12 @@ function MonthDistancePanel({
   year: number;
   embedded?: boolean;
 }) {
-  const maxDistance = Math.max(
-    ...months.map((month) => month.distanceMeters),
+  const maxKm = Math.max(
+    ...months.map((month) => month.distanceMeters / 1000),
     1
   );
+  const step = 10 ** Math.floor(Math.log10(maxKm));
+  const axisMax = Math.ceil(maxKm / step) * step;
   return (
     <section
       className={[
@@ -445,23 +447,35 @@ function MonthDistancePanel({
         </div>
         <span className="shadow-panel-unit">km</span>
       </div>
-      <div className="shadow-month-bars">
-        {months.map((month) => (
-          <div
-            className="shadow-month-bar"
-            key={month.month}
-            title={`${month.month + 1} 月 · ${formatKm(month.distanceMeters)}`}
-          >
-            <div className="shadow-month-track">
-              <span
-                style={{
-                  height: `${(month.distanceMeters / maxDistance) * 100}%`,
-                }}
-              />
+      <div className="shadow-month-chart">
+        <div className="shadow-month-axis" aria-label="里程刻度（公里）">
+          {[axisMax, axisMax / 2, 0].map((tick) => (
+            <span key={tick}>{tick.toLocaleString('zh-CN')}</span>
+          ))}
+        </div>
+        <div className="shadow-month-bars">
+          {months.map((month) => (
+            <div
+              className="shadow-month-bar"
+              key={month.month}
+              tabIndex={0}
+              role="img"
+              aria-label={`${month.month + 1} 月 · ${formatKm(month.distanceMeters)}`}
+            >
+              <div className="shadow-month-track">
+                <span
+                  style={{
+                    height: `${(month.distanceMeters / (axisMax * 1000)) * 100}%`,
+                  }}
+                />
+              </div>
+              <span>{month.month + 1}</span>
+              <span className="shadow-month-tooltip" aria-hidden="true">
+                {month.month + 1} 月 · {formatKm(month.distanceMeters)}
+              </span>
             </div>
-            <span>{month.month + 1}</span>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
     </section>
   );
