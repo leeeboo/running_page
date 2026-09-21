@@ -477,7 +477,10 @@ const ActivityRow = memo(function ActivityRow({
   onSelect: (activity: Activity) => void;
 }) {
   return (
-    <tr className={selected ? 'is-selected' : undefined}>
+    <tr
+      className={selected ? 'is-selected' : undefined}
+      onClick={() => onSelect(activity)}
+    >
       <td className="shadow-table-route" data-label="路线">
         <RouteThumb activity={activity} />
       </td>
@@ -498,7 +501,6 @@ const ActivityRow = memo(function ActivityRow({
           className="shadow-row-button"
           aria-label={`查看${activity.name || activityTypeLabel(activity.type)}路线`}
           aria-pressed={selected}
-          onClick={() => onSelect(activity)}
         >
           {selected ? '已选' : '查看'}
         </button>
@@ -703,9 +705,7 @@ function ShadowTheme() {
   }, []);
   const selectActivity = useCallback(
     (activity: Activity) => {
-      setSelectedActivityId((current) =>
-        current === activity.run_id ? null : activity.run_id
-      );
+      setSelectedActivityId(activity.run_id);
       if (selectedDate !== null) setPage(0);
       setSelectedDate(null);
       if (window.matchMedia('(max-width: 720px)').matches) {

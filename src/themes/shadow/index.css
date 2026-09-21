@@ -593,6 +593,10 @@
   vertical-align: middle;
 }
 
+.shadow-table-wrap tbody tr:has(.shadow-row-button) {
+  cursor: pointer;
+}
+
 .shadow-table-wrap tbody tr:hover,
 .shadow-table-wrap tbody tr.is-selected {
   background: color-mix(in srgb, var(--shadow-accent) 9%, transparent);
