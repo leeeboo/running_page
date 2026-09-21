@@ -12,6 +12,8 @@ export interface RouteMapProps {
   selectedActivity?: Activity | null;
   dark?: boolean;
   onClearSelection?: () => void;
+  routeColor?: string;
+  heading?: string;
 }
 
 const routeCache = new WeakMap<
@@ -28,6 +30,8 @@ export function RouteMapCanvas({
   selectedActivity,
   dark,
   onClearSelection,
+  routeColor,
+  heading,
 }: RouteMapProps) {
   const { locale } = useLocale();
   const zh = locale === 'zh';
@@ -104,6 +108,15 @@ export function RouteMapCanvas({
   const drawRoutes = useCallback(() => {
     const map = mapRef.current;
     if (!map || !styleReadyRef.current) return;
+    const lineColor: string | mapboxgl.ExpressionSpecification = routeColor ?? [
+      'match',
+      ['get', 'type'],
+      'Run',
+      '#f97316',
+      'Ride',
+      '#3b82f6',
+      '#4dd2ff',
+    ];
     const data = { type: 'FeatureCollection' as const, features: routes };
     const source = map.getSource('routes') as
       mapboxgl.GeoJSONSource | undefined;
@@ -116,25 +129,18 @@ export function RouteMapCanvas({
         source: 'routes',
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: {
-          'line-color': [
-            'match',
-            ['get', 'type'],
-            'Run',
-            '#f97316',
-            'Ride',
-            '#3b82f6',
-            '#4dd2ff',
-          ],
+          'line-color': lineColor,
         },
       });
     }
+    map.setPaintProperty('routes', 'line-color', lineColor);
     map.setPaintProperty('routes', 'line-width', selectedActivity ? 3.5 : 2);
     map.setPaintProperty('routes', 'line-opacity', selectedActivity ? 1 : 0.7);
     if (fittedRef.current !== routes) {
       fittedRef.current = routes;
       fitRoutes();
     }
-  }, [routes, selectedActivity, fitRoutes]);
+  }, [routes, selectedActivity, fitRoutes, routeColor]);
 
   useEffect(() => {
     if (!containerRef.current || !panelRef.current) return;
@@ -264,14 +270,14 @@ export function RouteMapCanvas({
       <div className="route-map-header">
         <div className="min-w-0">
           <h2 className="text-base font-semibold">
-            {zh ? '路线地图' : 'Route map'}
+            {heading ?? (zh ? '路线地图' : 'Route map')}
           </h2>
           <p
             className="truncate text-xs text-[var(--color-muted)]"
             title={selectedActivity?.name}
           >
             {selectedActivity
-              ? `${selectedActivity.name} · ${(selectedActivity.distance / 1000).toFixed(1)} km`
+              ? `${selectedActivity.name || selectedActivity.start_date_local.slice(0, 10)} · ${(selectedActivity.distance / 1000).toFixed(1)} km`
               : `${routes.length.toLocaleString()} ${zh ? '条轨迹' : 'routes'}`}
           </p>
         </div>

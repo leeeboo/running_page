@@ -16,15 +16,15 @@ mapbox_token: ''
 avatar: 'https://gravatar.com/avatar/f3b1c5be916ba231f6c5b1c6388c6158?size=512'
 
 # 默认语言：zh（中文）| en（英文）
-locale: en
+locale: zh
 
 # 默认主题：system（跟随系统）| light（浅色）| dark（深色）
-theme: dark
+theme: system
 
 # ── 主题预设 ──────────────────────────────────────────────────────────────────
 # 可选值：dashboard（3.0 Dashboard 风格）| classic（旧版多页面风格）| 自定义主题名
 # 自定义主题：在 src/themes/<name>/ 下创建主题，并在 src/App.tsx 注册后填写对应名称
-theme_preset: classic
+theme_preset: shadow
 
 # ── 运动目标 ──────────────────────────────────────────────────────────────────
 # unit: distance → 单位 km
